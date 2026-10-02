@@ -119,7 +119,7 @@ def main():
             print(f" {status} {chk.name:<35} : {chk.message}")
         print("-" * 60)
 
-    print("\n💡 Pour lancer l'application avec webcam ou interface web :")
+    print("\n💡 Pour lancer l'application graphique de bureau (Tkinter) :")
     print("   python main.py --ui\n")
 
 
