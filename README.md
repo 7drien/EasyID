@@ -2,6 +2,11 @@
 
 Générateur et vérificateur automatique de photos d'identité aux **normes officielles françaises (ANTS) et internationales (ISO/IEC 19794-5 / ICAO)**.
 
+<p align="center">
+  <img src="EasyID_github.png" alt="App preview" width="100%" />
+</p>
+
+
 ---
 
 ## 🎯 Fonctionnalités Clés
