@@ -39,13 +39,11 @@ pip install -e .
 
 ## 💻 Utilisation
 
-### 1. Interface Web Interactive (Recommandé)
-Lancez l'interface web pour tester avec votre webcam ou en glissant-déposant vos photos :
+### 1. Interface Graphique Native Desktop (Tkinter)
+Lancez l'application de bureau avec prévisualisation en direct, webcam et contrôle de conformité :
 
 ```bash
 python main.py --ui
-# ou
-streamlit run easyid/ui/app.py
 ```
 
 ### 2. En Ligne de Commande (CLI)
