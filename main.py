@@ -15,10 +15,10 @@ from easyid.pipeline import EasyIDPipeline
 
 
 def launch_ui():
-    """Lance l'interface utilisateur Streamlit."""
-    app_path = Path(__file__).parent / "easyid" / "ui" / "app.py"
-    print(f"🚀 Lancement de l'interface graphique Streamlit ({app_path})...")
-    subprocess.run([sys.executable, "-m", "streamlit", "run", str(app_path)])
+    """Lance l'interface utilisateur native Desktop Tkinter."""
+    from easyid.ui.app import start_app
+    print("🚀 Lancement de l'interface graphique Tkinter...")
+    start_app()
 
 
 def main():
@@ -57,7 +57,7 @@ def main():
     parser.add_argument(
         "--ui",
         action="store_true",
-        help="Démarrer l'interface web interactive Streamlit (webcam + upload).",
+        help="Démarrer l'interface graphique native Desktop (Tkinter).",
     )
 
     args = parser.parse_args()
