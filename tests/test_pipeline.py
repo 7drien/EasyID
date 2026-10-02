@@ -79,6 +79,32 @@ def test_pipeline_execution_600dpi(sample_image_path):
     assert h == 1063, f"Hauteur 600 DPI attendue 1063 px, obtenu {h}"
 
 
+def test_pipeline_template_zones_compliance(sample_image_path):
+    pipeline = EasyIDPipeline()
+    result = pipeline.process(
+        image_input=sample_image_path,
+        dpi=300,
+        replace_background=False,
+        generate_sheet=False,
+    )
+    assert result.success is True
+    aff = result.crop_result.affine_result
+    M = aff.matrix
+    crown_dst = M @ np.array([aff.skull_crown_src[0], aff.skull_crown_src[1], 1.0])
+    chin_dst = M @ np.array([aff.chin_src[0], aff.chin_src[1], 1.0])
+
+    cfg = pipeline.config
+    crown_min_y = round((cfg.CROWN_ZONE_MIN_MM / 25.4) * 300)
+    crown_max_y = round((cfg.CROWN_ZONE_MAX_MM / 25.4) * 300)
+    chin_min_y = round((cfg.CHIN_ZONE_MIN_MM / 25.4) * 300)
+    chin_max_y = round((cfg.CHIN_ZONE_MAX_MM / 25.4) * 300)
+
+    # Le crâne doit être dans sa zone de tolérance
+    assert crown_min_y <= crown_dst[1] <= crown_max_y, f"Crâne {crown_dst[1]} hors zone [{crown_min_y}, {crown_max_y}]"
+    # Le menton doit être dans sa zone de tolérance
+    assert chin_min_y <= chin_dst[1] <= chin_max_y, f"Menton {chin_dst[1]} hors zone [{chin_min_y}, {chin_max_y}]"
+
+
 def test_invalid_input():
     pipeline = EasyIDPipeline()
     # Image sans visage (bruit noir complet)

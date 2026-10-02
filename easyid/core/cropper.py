@@ -76,12 +76,14 @@ class FaceCropper:
         target_w = self.config.target_width_px(dpi)
         target_h = self.config.target_height_px(dpi)
         target_face_h = self.config.target_face_height_px(dpi)
+        eyes_target_y = self.config.eyes_target_px(dpi)
 
         affine_res = compute_id_affine_transform(
             keypoints=detection.keypoints,
             target_width=target_w,
             target_height=target_h,
             target_face_height=target_face_h,
+            eyes_target_y=eyes_target_y,
             mask=mask,
         )
 

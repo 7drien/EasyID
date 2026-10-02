@@ -25,15 +25,22 @@ class IDPhotoConfig:
     WIDTH_MM: float = 35.0
     HEIGHT_MM: float = 45.0
 
-    # Taille du visage réglementaire (menton au sommet du crâne, hors cheveux)
+    # Taille du visage réglementaire (menton au sommet du crâne, hors cheveux) : 32 à 36 mm (70 à 80%)
     FACE_HEIGHT_MIN_MM: float = 32.0  # 71.1%
     FACE_HEIGHT_MAX_MM: float = 36.0  # 80.0%
-    FACE_HEIGHT_TARGET_MM: float = 33.0  # 73.3% (médiane optimale laissant place à la chevelure)
+    FACE_HEIGHT_TARGET_MM: float = 33.4  # ~74.2% (valeur médiane idéale du gabarit officiel)
 
-    # Marges recommandées pour que la tête et les cheveux soient intégralement dans le cadre
-    HEAD_TOP_MARGIN_TARGET_MM: float = 3.5  # Marge idéale sommet de tête (cheveux compris) / bord supérieur
-    HEAD_TOP_MARGIN_MIN_MM: float = 2.0  # Marge minimale absolue au-dessus des cheveux
-    CHIN_BOTTOM_MARGIN_MIN_MM: float = 4.0  # Marge minimale sous le menton
+    # Positionnement officiel ICAO 9303 / ANTS des zones de tolérance (confidence)
+    # 1. Axe oculaire de référence (25.2 mm du bas = 19.8 mm du haut, norme 24 à 28 mm)
+    EYES_Y_TARGET_MM: float = 19.8
+
+    # 2. Zone de tolérance du sommet du crâne / front (deux traits)
+    CROWN_ZONE_MIN_MM: float = 3.5  # Trait supérieur du crâne (41.5 mm du bas)
+    CROWN_ZONE_MAX_MM: float = 7.5  # Trait inférieur du crâne (37.5 mm du bas)
+
+    # 3. Zone de tolérance du bas du menton (deux traits)
+    CHIN_ZONE_MIN_MM: float = 35.5  # Trait supérieur du menton (9.5 mm du bas)
+    CHIN_ZONE_MAX_MM: float = 39.5  # Trait inférieur du menton (5.5 mm du bas)
 
     # Résolution par défaut
     DEFAULT_DPI: int = 300
@@ -64,8 +71,8 @@ class IDPhotoConfig:
     def target_face_height_px(self, dpi: int = 300) -> int:
         return mm_to_px(self.FACE_HEIGHT_TARGET_MM, dpi)
 
-    def target_top_margin_px(self, dpi: int = 300) -> int:
-        return mm_to_px(self.TOP_MARGIN_TARGET_MM, dpi)
+    def eyes_target_px(self, dpi: int = 300) -> int:
+        return mm_to_px(self.EYES_Y_TARGET_MM, dpi)
 
 
 # Instance globale réutilisable

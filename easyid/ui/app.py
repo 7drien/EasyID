@@ -109,32 +109,40 @@ def ask_save_image_file(
 
 
 def draw_official_overlay(image_bgr: np.ndarray, config: IDPhotoConfig, dpi: int = 300) -> np.ndarray:
-    """Dessine le gabarit réglementaire officiel en surimpression pour contrôle visuel."""
+    """Dessine le gabarit réglementaire officiel ICAO 9303 / ANTS avec zones de tolérance (deux traits par zone)."""
     overlay = image_bgr.copy()
     h, w = image_bgr.shape[:2]
 
-    # 1. Ligne médiane verticale (axe sagittal de symétrie)
+    # 1. Axe vertical médian de symétrie (axe sagittal)
     cv2.line(overlay, (w // 2, 0), (w // 2, h), (0, 230, 255), 1)
 
-    # 2. Zone supérieure recommandée pour la tête / cheveux (2 à 5 mm)
-    top_min_px = round((2.0 / 25.4) * dpi)
-    top_ideal_px = round((3.5 / 25.4) * dpi)
-    cv2.line(overlay, (0, top_min_px), (w, top_min_px), (0, 255, 100), 1)
-    cv2.putText(overlay, "Limite haute cheveux (>=2mm)", (8, top_min_px - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 220, 100), 1)
+    # 2. Zone sommet du crâne / front (DEUX TRAITS : 3.5 mm et 7.5 mm du haut)
+    crown_top_px = round((config.CROWN_ZONE_MIN_MM / 25.4) * dpi)  # 3.5 mm (~41 px)
+    crown_bot_px = round((config.CROWN_ZONE_MAX_MM / 25.4) * dpi)  # 7.5 mm (~89 px)
 
-    # 3. Ligne des yeux recommandée (environ 24 à 30 mm du bas)
-    eyes_ref_px = h - round((26.0 / 25.4) * dpi)
-    cv2.line(overlay, (w // 4, eyes_ref_px), (3 * w // 4, eyes_ref_px), (255, 200, 0), 1)
-    cv2.putText(overlay, "Axe des yeux", (w // 4 + 4, eyes_ref_px - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.30, (255, 200, 0), 1)
+    # Bande verte semi-transparente (zone de confiance crâne / front)
+    cv2.rectangle(overlay, (0, crown_top_px), (w, crown_bot_px), (0, 80, 0), -1)
+    cv2.line(overlay, (0, crown_top_px), (w, crown_top_px), (0, 255, 100), 1)
+    cv2.line(overlay, (0, crown_bot_px), (w, crown_bot_px), (0, 255, 100), 1)
+    cv2.putText(overlay, "Zone sommet crane / front (3.5 - 7.5 mm)", (8, crown_top_px - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 255, 100), 1, cv2.LINE_AA)
 
-    # 4. Zone basse menton réglementaire (environ 5 à 9 mm du bas)
-    chin_min_px = h - round((5.0 / 25.4) * dpi)
-    chin_max_px = h - round((9.0 / 25.4) * dpi)
-    cv2.line(overlay, (0, chin_min_px), (w, chin_min_px), (0, 140, 255), 1)
-    cv2.line(overlay, (0, chin_max_px), (w, chin_max_px), (0, 140, 255), 1)
-    cv2.putText(overlay, "Zone menton", (8, chin_min_px + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 140, 255), 1)
+    # 3. Ligne des yeux de référence
+    eyes_px = round((config.EYES_Y_TARGET_MM / 25.4) * dpi)  # ~19.8 mm
+    dist_bottom_mm = config.HEIGHT_MM - config.EYES_Y_TARGET_MM
+    cv2.line(overlay, (0, eyes_px), (w, eyes_px), (255, 230, 0), 1)
+    cv2.putText(overlay, f"Axe des yeux ({dist_bottom_mm:.1f} mm du bas)", (8, eyes_px - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (255, 230, 0), 1, cv2.LINE_AA)
 
-    return cv2.addWeighted(overlay, 0.85, image_bgr, 0.15, 0)
+    # 4. Zone bas du menton (DEUX TRAITS : 35.5 mm et 39.5 mm du haut = 5.5 à 9.5 mm du bas)
+    chin_top_px = round((config.CHIN_ZONE_MIN_MM / 25.4) * dpi)  # 35.5 mm (~419 px)
+    chin_bot_px = round((config.CHIN_ZONE_MAX_MM / 25.4) * dpi)  # 39.5 mm (~467 px)
+
+    # Bande orange semi-transparente (zone de confiance menton)
+    cv2.rectangle(overlay, (0, chin_top_px), (w, chin_bot_px), (0, 40, 80), -1)
+    cv2.line(overlay, (0, chin_top_px), (w, chin_top_px), (0, 160, 255), 1)
+    cv2.line(overlay, (0, chin_bot_px), (w, chin_bot_px), (0, 160, 255), 1)
+    cv2.putText(overlay, "Zone bas menton (5.5 - 9.5 mm du bas)", (8, chin_bot_px + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 160, 255), 1, cv2.LINE_AA)
+
+    return cv2.addWeighted(overlay, 0.82, image_bgr, 0.18, 0)
 
 
 def bgr_to_imagetk(bgr_img: np.ndarray, max_w: int, max_h: int) -> ImageTk.PhotoImage:
