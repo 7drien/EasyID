@@ -1,19 +1,111 @@
 """
-Interface Utilisateur Native Desktop avec Tkinter pour EasyID.
-100% local, rapide, sans navigateur et sans aucune dépendance web.
+Interface Utilisateur Moderne Desktop pour EasyID.
+Basée sur Tkinter et ttkbootstrap pour un design contemporain, épuré et réactif.
+Intègre le sélecteur de fichiers natif moderne (Zenity sous Linux avec aperçus/vignettes)
+et une capture webcam guidée avec gabarit ovale en temps réel.
 """
 
-import threading
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
 from pathlib import Path
+import shutil
+import subprocess
 from typing import Optional
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
 
 from easyid.config import DEFAULT_CONFIG, IDPhotoConfig
 from easyid.pipeline import EasyIDPipeline, PipelineResult
+
+
+def ask_open_image_file(parent=None, title="Sélectionner une photo de portrait") -> Optional[str]:
+    """
+    Ouvre le sélecteur de fichiers natif moderne du bureau (Zenity / GTK sur Linux avec
+    vignettes d'images, dossiers récents et favoris), avec fallback automatique sur Tkinter.
+    """
+    zenity_bin = shutil.which("zenity")
+    if zenity_bin:
+        try:
+            cmd = [
+                zenity_bin,
+                "--file-selection",
+                f"--title={title}",
+                "--file-filter=Images (*.jpg, *.png, *.webp) | *.jpg *.jpeg *.png *.webp *.JPG *.JPEG *.PNG *.WEBP *.bmp *.BMP",
+                "--file-filter=Tous les fichiers | *",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                chosen = result.stdout.strip()
+                if chosen and Path(chosen).is_file():
+                    return chosen
+            elif result.returncode == 1:
+                # L'utilisateur a cliqué sur 'Annuler'
+                return None
+        except Exception:
+            pass
+
+    # Fallback standard
+    return filedialog.askopenfilename(
+        parent=parent,
+        title=title,
+        filetypes=[
+            ("Images", "*.jpg *.jpeg *.png *.webp *.bmp"),
+            ("Tous les fichiers", "*.*"),
+        ],
+    )
+
+
+def ask_save_image_file(
+    parent=None,
+    title="Enregistrer l'image",
+    initial_file="photo.jpg",
+    file_type="jpg",
+) -> Optional[str]:
+    """
+    Ouvre la boîte de dialogue d'enregistrement native moderne du système (Zenity)
+    avec confirmation d'écrasement, ou fallback sur Tkinter.
+    """
+    zenity_bin = shutil.which("zenity")
+    if zenity_bin:
+        try:
+            filter_arg = (
+                "--file-filter=Images JPEG (*.jpg) | *.jpg *.jpeg"
+                if file_type == "jpg"
+                else "--file-filter=Images PNG (*.png) | *.png"
+            )
+            cmd = [
+                zenity_bin,
+                "--file-selection",
+                "--save",
+                "--confirm-overwrite",
+                f"--title={title}",
+                f"--filename={initial_file}",
+                filter_arg,
+                "--file-filter=Tous les fichiers | *",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                chosen = result.stdout.strip()
+                if chosen:
+                    if not chosen.lower().endswith(f".{file_type}"):
+                        chosen = f"{chosen}.{file_type}"
+                    return chosen
+            elif result.returncode == 1:
+                return None
+        except Exception:
+            pass
+
+    return filedialog.asksaveasfilename(
+        parent=parent,
+        title=title,
+        defaultextension=f".{file_type}",
+        initialfile=initial_file,
+        filetypes=[("Image JPEG", "*.jpg"), ("Image PNG", "*.png")],
+    )
 
 
 def draw_official_overlay(image_bgr: np.ndarray, config: IDPhotoConfig, dpi: int = 300) -> np.ndarray:
@@ -22,18 +114,20 @@ def draw_official_overlay(image_bgr: np.ndarray, config: IDPhotoConfig, dpi: int
     h, w = image_bgr.shape[:2]
 
     # Ligne médiane verticale (axe sagittal)
-    cv2.line(overlay, (w // 2, 0), (w // 2, h), (0, 255, 255), 1)
+    cv2.line(overlay, (w // 2, 0), (w // 2, h), (0, 230, 255), 1)
 
     # Ligne sommet du crâne cible
     top_margin_px = config.target_top_margin_px(dpi)
-    cv2.line(overlay, (0, top_margin_px), (w, top_margin_px), (0, 255, 0), 1)
+    cv2.line(overlay, (0, top_margin_px), (w, top_margin_px), (0, 255, 100), 1)
+    cv2.putText(overlay, "Sommet crane (3.5-4.5mm)", (8, top_margin_px - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 220, 100), 1)
 
     # Zone menton réglementaire (entre 32 et 36 mm du sommet)
     chin_min_px = top_margin_px + config.target_face_height_px(dpi) - round((2.0 / 25.4) * dpi)
     chin_max_px = top_margin_px + config.target_face_height_px(dpi) + round((2.0 / 25.4) * dpi)
 
-    cv2.line(overlay, (0, chin_min_px), (w, chin_min_px), (0, 165, 255), 1)
-    cv2.line(overlay, (0, chin_max_px), (w, chin_max_px), (0, 165, 255), 1)
+    cv2.line(overlay, (0, chin_min_px), (w, chin_min_px), (0, 140, 255), 1)
+    cv2.line(overlay, (0, chin_max_px), (w, chin_max_px), (0, 140, 255), 1)
+    cv2.putText(overlay, "Zone menton (32-36mm)", (8, chin_max_px + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 140, 255), 1)
 
     return cv2.addWeighted(overlay, 0.85, image_bgr, 0.15, 0)
 
@@ -52,7 +146,7 @@ def bgr_to_imagetk(bgr_img: np.ndarray, max_w: int, max_h: int) -> ImageTk.Photo
 
 
 class WebcamCaptureDialog:
-    """Fenêtre modale de capture Webcam en direct."""
+    """Fenêtre modale de capture Webcam en direct avec guide ovale intégré."""
 
     def __init__(self, parent, on_capture_callback):
         self.parent = parent
@@ -62,35 +156,48 @@ class WebcamCaptureDialog:
         if not self.cap.isOpened():
             messagebox.showerror(
                 "Erreur Webcam",
-                "Impossible d'accéder à la webcam. Vérifiez qu'elle est bien connectée.",
+                "Impossible d'accéder à la caméra. Vérifiez qu'elle est bien connectée.",
                 parent=parent,
             )
             return
 
-        self.window = tk.Toplevel(parent)
+        self.window = tb.Toplevel(parent)
         self.window.title("📷 Capture Webcam — EasyID")
         self.window.transient(parent)
         self.window.grab_set()
 
-        self.label = ttk.Label(self.window)
-        self.label.pack(padx=10, pady=10)
+        header = tb.Frame(self.window, padding=10)
+        header.pack(fill=X)
+        tb.Label(
+            header,
+            text="Placez votre visage dans l'ovale guide, bien de face avec une expression neutre",
+            font=("Helvetica", 10, "italic"),
+            bootstyle="secondary",
+        ).pack(anchor=CENTER)
 
-        info = ttk.Label(
-            self.window,
-            text="Positionnez votre visage bien en face, droit, avec une expression neutre.",
-            font=("Arial", 10, "italic"),
-        )
-        info.pack(pady=4)
+        self.lbl_video = tb.Label(self.window)
+        self.lbl_video.pack(padx=15, pady=5)
 
-        btn_box = ttk.Frame(self.window)
-        btn_box.pack(pady=10)
+        btn_box = tb.Frame(self.window, padding=12)
+        btn_box.pack(fill=X)
 
-        ttk.Button(btn_box, text="📸 Capturer", command=self.capture).pack(side=tk.LEFT, padx=10)
-        ttk.Button(btn_box, text="Annuler", command=self.close).pack(side=tk.LEFT, padx=10)
+        tb.Button(
+            btn_box,
+            text="📸 Prendre la photo",
+            bootstyle="success",
+            command=self.capture,
+        ).pack(side=LEFT, expand=True, padx=8)
+
+        tb.Button(
+            btn_box,
+            text="Annuler",
+            bootstyle="secondary-outline",
+            command=self.close,
+        ).pack(side=LEFT, expand=True, padx=8)
 
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.running = True
-        self.current_frame = None
+        self.current_raw_frame = None
         self.update_video()
 
     def update_video(self):
@@ -98,20 +205,30 @@ class WebcamCaptureDialog:
             return
         ret, frame = self.cap.read()
         if ret:
-            # Miroir horizontal naturel pour selfie
+            # Effet miroir naturel pour selfie
             frame = cv2.flip(frame, 1)
-            self.current_frame = frame
-            # Aperçu
-            img_tk = bgr_to_imagetk(frame, 500, 380)
-            self.label.configure(image=img_tk)
-            self.label.image = img_tk
+            self.current_raw_frame = frame.copy()
+
+            # Guide visuel ovale semi-transparent
+            h_f, w_f = frame.shape[:2]
+            center_ov = (w_f // 2, int(h_f * 0.48))
+            axes_ov = (int(w_f * 0.22), int(h_f * 0.35))
+            overlay_cam = frame.copy()
+            cv2.ellipse(overlay_cam, center_ov, axes_ov, 0, 0, 360, (0, 230, 200), 2)
+            cv2.circle(overlay_cam, (center_ov[0], center_ov[1] - axes_ov[1]), 5, (0, 255, 100), -1)
+            cv2.circle(overlay_cam, (center_ov[0], center_ov[1] + axes_ov[1]), 5, (0, 140, 255), -1)
+            display_frame = cv2.addWeighted(overlay_cam, 0.75, frame, 0.25, 0)
+
+            img_tk = bgr_to_imagetk(display_frame, 520, 390)
+            self.lbl_video.configure(image=img_tk)
+            self.lbl_video.image = img_tk
         self.window.after(30, self.update_video)
 
     def capture(self):
-        if self.current_frame is not None:
-            frame_to_process = self.current_frame.copy()
+        if self.current_raw_frame is not None:
+            clean_photo = self.current_raw_frame.copy()
             self.close()
-            self.on_capture_callback(frame_to_process)
+            self.on_capture_callback(clean_photo)
 
     def close(self):
         self.running = False
@@ -120,34 +237,37 @@ class WebcamCaptureDialog:
         self.window.destroy()
 
 
-class EasyIDTkinterApp:
-    """Application principale Tkinter pour EasyID."""
+class EasyIDModernApp:
+    """Application Desktop moderne pour EasyID."""
 
-    def __init__(self, root: tk.Tk):
+    AVAILABLE_THEMES = [
+        "cosmo",      # Thème clair professionnel (défaut)
+        "flatly",     # Thème clair moderne épuré
+        "litera",     # Thème clair minimaliste
+        "darkly",     # Thème sombre moderne
+        "superhero",  # Thème sombre bleuté
+        "cyborg",     # Thème sombre high-tech
+    ]
+
+    def __init__(self, root: tb.Window):
         self.root = root
         self.root.title("EasyID — Photos d'Identité Conformes (ANTS / ICAO)")
-        self.root.geometry("1100x820")
-        self.root.minsize(950, 720)
+        self.root.geometry("1160x860")
+        self.root.minsize(980, 720)
 
         self.pipeline = EasyIDPipeline()
         self.current_input_bgr: Optional[np.ndarray] = None
         self.current_result: Optional[PipelineResult] = None
 
-        # Variables de contrôle
-        self.var_replace_bg = tk.BooleanVar(value=True)
-        self.var_show_overlay = tk.BooleanVar(value=True)
-        self.var_dpi = tk.IntVar(value=300)
-
-        # Style
-        self.style = ttk.Style()
-        try:
-            self.style.theme_use("clam")
-        except Exception:
-            pass
+        # Variables d'état
+        self.var_replace_bg = tb.BooleanVar(value=True)
+        self.var_show_overlay = tb.BooleanVar(value=True)
+        self.var_dpi = tb.IntVar(value=300)
+        self.var_theme = tb.StringVar(value="cosmo")
 
         self._build_ui()
 
-        # Charger la démo par défaut au démarrage si présente
+        # Charger la démo d'exemple au démarrage si disponible
         sample = Path(__file__).resolve().parent.parent.parent / "tests" / "sample_portrait.jpg"
         if sample.exists():
             img = cv2.imread(str(sample))
@@ -155,129 +275,203 @@ class EasyIDTkinterApp:
                 self.load_image_array(img)
 
     def _build_ui(self):
-        # 1. En-tête
-        header_frame = ttk.Frame(self.root, padding=10)
-        header_frame.pack(fill=tk.X)
+        # 1. En-tête moderne avec dégradé / barre supérieure
+        header = tb.Frame(self.root, padding=(15, 12), bootstyle="secondary")
+        header.pack(fill=X)
 
-        title = ttk.Label(
-            header_frame,
-            text="📸 EasyID — Photos d'Identité Conformes",
-            font=("Arial", 16, "bold"),
+        title_box = tb.Frame(header, bootstyle="secondary")
+        title_box.pack(side=LEFT)
+
+        tb.Label(
+            title_box,
+            text="📸 EasyID",
+            font=("Helvetica", 17, "bold"),
+            bootstyle="inverse-secondary",
+        ).pack(side=LEFT, padx=(0, 10))
+
+        tb.Label(
+            title_box,
+            text="Norme ANTS / ISO 19794-5",
+            font=("Helvetica", 9, "bold"),
+            bootstyle="success-inverse",
+            padding=(6, 2),
+        ).pack(side=LEFT, padx=(0, 12))
+
+        tb.Label(
+            title_box,
+            text="Format 35×45 mm • Visage 32–36 mm (70–80%) • 100% Hors-ligne",
+            font=("Helvetica", 10),
+            bootstyle="inverse-secondary",
+        ).pack(side=LEFT)
+
+        # Sélecteur de thème dans l'en-tête
+        theme_box = tb.Frame(header, bootstyle="secondary")
+        theme_box.pack(side=RIGHT)
+
+        tb.Label(
+            theme_box,
+            text="🎨 Thème :",
+            font=("Helvetica", 9),
+            bootstyle="inverse-secondary",
+        ).pack(side=LEFT, padx=4)
+
+        theme_combo = tb.Combobox(
+            theme_box,
+            values=self.AVAILABLE_THEMES,
+            textvariable=self.var_theme,
+            width=10,
+            state="readonly",
         )
-        title.pack(anchor=tk.W)
+        theme_combo.pack(side=LEFT)
+        theme_combo.bind("<<ComboboxSelected>>", self.on_theme_changed)
 
-        subtitle = ttk.Label(
-            header_frame,
-            text="Format officiel 35 × 45 mm • Taille visage 32 à 36 mm (70 à 80%) • 100% Local sur votre machine",
-            font=("Arial", 10),
-            foreground="#555555",
-        )
-        subtitle.pack(anchor=tk.W)
+        # 2. Barre d'actions & options modernes
+        toolbar_card = tb.Labelframe(self.root, text="Contrôles & Options", padding=10)
+        toolbar_card.pack(fill=X, padx=15, pady=(8, 4))
 
-        ttk.Separator(self.root, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=5)
+        # Boutons sources
+        btn_src_box = tb.Frame(toolbar_card)
+        btn_src_box.pack(side=LEFT)
 
-        # 2. Barre d'outils / Contrôles
-        toolbar = ttk.Frame(self.root, padding=8)
-        toolbar.pack(fill=tk.X)
+        tb.Button(
+            btn_src_box,
+            text="📁 Ouvrir photo...",
+            bootstyle="primary",
+            command=self.on_open_file,
+        ).pack(side=LEFT, padx=4)
 
-        ttk.Button(toolbar, text="📁 Ouvrir une photo...", command=self.on_open_file).pack(side=tk.LEFT, padx=4)
-        ttk.Button(toolbar, text="📷 Webcam", command=self.on_open_webcam).pack(side=tk.LEFT, padx=4)
-        ttk.Button(toolbar, text="🖼️ Démo", command=self.on_load_demo).pack(side=tk.LEFT, padx=4)
+        tb.Button(
+            btn_src_box,
+            text="📷 Webcam",
+            bootstyle="info-outline",
+            command=self.on_open_webcam,
+        ).pack(side=LEFT, padx=4)
 
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        tb.Button(
+            btn_src_box,
+            text="🖼️ Démo",
+            bootstyle="secondary-outline",
+            command=self.on_load_demo,
+        ).pack(side=LEFT, padx=4)
 
-        ttk.Checkbutton(
-            toolbar,
-            text="Fond neutre (gris officiel)",
+        tb.Separator(toolbar_card, orient=VERTICAL).pack(side=LEFT, fill=Y, padx=12)
+
+        # Toggles modernes
+        toggles_box = tb.Frame(toolbar_card)
+        toggles_box.pack(side=LEFT)
+
+        tb.Checkbutton(
+            toggles_box,
+            text="Fond neutre officiel",
             variable=self.var_replace_bg,
+            bootstyle="success-round-toggle",
             command=self.reprocess_current,
-        ).pack(side=tk.LEFT, padx=6)
+        ).pack(side=LEFT, padx=8)
 
-        ttk.Checkbutton(
-            toolbar,
+        tb.Checkbutton(
+            toggles_box,
             text="Gabarit officiel (32-36mm)",
             variable=self.var_show_overlay,
+            bootstyle="warning-round-toggle",
             command=self.update_photo_display,
-        ).pack(side=tk.LEFT, padx=6)
+        ).pack(side=LEFT, padx=8)
 
-        ttk.Label(toolbar, text="Résolution :").pack(side=tk.LEFT, padx=(10, 2))
-        dpi_combo = ttk.Combobox(
-            toolbar,
+        tb.Separator(toolbar_card, orient=VERTICAL).pack(side=LEFT, fill=Y, padx=12)
+
+        # DPI
+        dpi_box = tb.Frame(toolbar_card)
+        dpi_box.pack(side=LEFT)
+        tb.Label(dpi_box, text="DPI :").pack(side=LEFT, padx=2)
+        dpi_combo = tb.Combobox(
+            dpi_box,
             values=[300, 600],
             textvariable=self.var_dpi,
             width=5,
             state="readonly",
         )
-        dpi_combo.pack(side=tk.LEFT, padx=2)
+        dpi_combo.pack(side=LEFT, padx=2)
         dpi_combo.bind("<<ComboboxSelected>>", lambda e: self.reprocess_current())
-        ttk.Label(toolbar, text="DPI").pack(side=tk.LEFT, padx=(1, 10))
 
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        # Boutons de sauvegarde
+        btn_save_box = tb.Frame(toolbar_card)
+        btn_save_box.pack(side=RIGHT)
 
-        self.btn_save_photo = ttk.Button(
-            toolbar, text="💾 Sauvegarder Photo", command=self.on_save_photo, state=tk.DISABLED
+        self.btn_save_photo = tb.Button(
+            btn_save_box,
+            text="💾 Enregistrer Photo 35×45",
+            bootstyle="success",
+            command=self.on_save_photo,
+            state=DISABLED,
         )
-        self.btn_save_photo.pack(side=tk.LEFT, padx=4)
+        self.btn_save_photo.pack(side=LEFT, padx=4)
 
-        self.btn_save_sheet = ttk.Button(
-            toolbar, text="🖨️ Sauvegarder Planche 10x15", command=self.on_save_sheet, state=tk.DISABLED
+        self.btn_save_sheet = tb.Button(
+            btn_save_box,
+            text="🖨️ Enregistrer Planche 10×15",
+            bootstyle="primary-outline",
+            command=self.on_save_sheet,
+            state=DISABLED,
         )
-        self.btn_save_sheet.pack(side=tk.LEFT, padx=4)
+        self.btn_save_sheet.pack(side=LEFT, padx=4)
 
-        # 3. Zone principale : Aperçus
-        main_content = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        main_content.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # 3. Zone d'aperçu à 3 panneaux (Cartes modernes)
+        preview_container = tb.Frame(self.root, padding=(15, 4))
+        preview_container.pack(fill=BOTH, expand=True)
 
-        # Panneau gauche : Photo source
-        frame_src = ttk.LabelFrame(main_content, text="1. Photo Source", padding=8)
-        main_content.add(frame_src, weight=1)
+        preview_grid = tb.Frame(preview_container)
+        preview_grid.pack(fill=BOTH, expand=True)
 
-        self.lbl_src_img = ttk.Label(frame_src, text="Aucune photo chargée", anchor=tk.CENTER)
-        self.lbl_src_img.pack(fill=tk.BOTH, expand=True)
+        # Carte 1 : Source
+        card_src = tb.Labelframe(preview_grid, text="1. Photo d'Origine", padding=8, bootstyle="default")
+        card_src.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
 
-        self.lbl_src_info = ttk.Label(frame_src, text="", font=("Arial", 9))
-        self.lbl_src_info.pack(anchor=tk.W, pady=2)
+        self.lbl_src_img = tb.Label(card_src, text="Aucune photo chargée\n\nCliquez sur 'Ouvrir photo' ou 'Webcam'", anchor=CENTER)
+        self.lbl_src_img.pack(fill=BOTH, expand=True)
 
-        # Panneau centre : Photo d'identité (35x45mm)
-        frame_id = ttk.LabelFrame(main_content, text="2. Photo d'Identité (35 × 45 mm)", padding=8)
-        main_content.add(frame_id, weight=1)
+        self.lbl_src_info = tb.Label(card_src, text="", font=("Helvetica", 9), bootstyle="secondary")
+        self.lbl_src_info.pack(anchor=W, pady=(4, 0))
 
-        self.lbl_id_img = ttk.Label(frame_id, text="En attente de traitement", anchor=tk.CENTER)
-        self.lbl_id_img.pack(fill=tk.BOTH, expand=True)
+        # Carte 2 : Photo d'identité
+        card_id = tb.Labelframe(preview_grid, text="2. Photo d'Identité (35 × 45 mm)", padding=8, bootstyle="primary")
+        card_id.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
 
-        self.lbl_id_info = ttk.Label(frame_id, text="", font=("Arial", 9, "bold"))
-        self.lbl_id_info.pack(anchor=tk.W, pady=2)
+        self.lbl_id_img = tb.Label(card_id, text="En attente de traitement", anchor=CENTER)
+        self.lbl_id_img.pack(fill=BOTH, expand=True)
 
-        # Panneau droite : Planche 10x15 cm
-        frame_sheet = ttk.LabelFrame(main_content, text="3. Planche 10 × 15 cm (6 photos)", padding=8)
-        main_content.add(frame_sheet, weight=1)
+        self.lbl_id_info = tb.Label(card_id, text="", font=("Helvetica", 9, "bold"), bootstyle="primary")
+        self.lbl_id_info.pack(anchor=W, pady=(4, 0))
 
-        self.lbl_sheet_img = ttk.Label(frame_sheet, text="En attente", anchor=tk.CENTER)
-        self.lbl_sheet_img.pack(fill=tk.BOTH, expand=True)
+        # Carte 3 : Planche d'impression
+        card_sheet = tb.Labelframe(preview_grid, text="3. Planche 10 × 15 cm (6 photos)", padding=8, bootstyle="info")
+        card_sheet.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
 
-        self.lbl_sheet_info = ttk.Label(
-            frame_sheet,
-            text="Gabarit 10x15cm avec repères de découpe",
-            font=("Arial", 9),
-        )
-        self.lbl_sheet_info.pack(anchor=tk.W, pady=2)
+        self.lbl_sheet_img = tb.Label(card_sheet, text="En attente", anchor=CENTER)
+        self.lbl_sheet_img.pack(fill=BOTH, expand=True)
 
-        # 4. Panneau inférieur : Rapport de conformité réglementaire ANTS / ICAO
-        frame_bottom = ttk.LabelFrame(self.root, text="📋 Contrôle de Conformité Réglementaire (ANTS / ICAO)", padding=8)
-        frame_bottom.pack(fill=tk.X, padx=10, pady=8)
+        self.lbl_sheet_info = tb.Label(card_sheet, text="6 photos prêtes avec repères", font=("Helvetica", 9), bootstyle="secondary")
+        self.lbl_sheet_info.pack(anchor=W, pady=(4, 0))
 
-        self.lbl_overall_status = ttk.Label(
-            frame_bottom,
+        # 4. Panneau de conformité ANTS / ICAO
+        qa_frame = tb.Labelframe(self.root, text="📋 Contrôle Qualité Réglementaire (ANTS / ICAO)", padding=10)
+        qa_frame.pack(fill=X, padx=15, pady=(4, 8))
+
+        # Bannière de statut global
+        self.banner_score = tb.Label(
+            qa_frame,
             text="Statut : En attente d'analyse",
-            font=("Arial", 11, "bold"),
+            font=("Helvetica", 11, "bold"),
+            padding=(10, 4),
+            bootstyle="secondary",
         )
-        self.lbl_overall_status.pack(anchor=tk.W, pady=2)
+        self.banner_score.pack(fill=X, pady=(0, 6))
 
-        self.tree_report = ttk.Treeview(
-            frame_bottom,
+        # Table des critères
+        self.tree_report = tb.Treeview(
+            qa_frame,
             columns=("status", "name", "value", "threshold", "comment"),
             show="headings",
             height=6,
+            bootstyle="primary",
         )
         self.tree_report.heading("status", text="Statut")
         self.tree_report.heading("name", text="Critère officiel")
@@ -285,28 +479,34 @@ class EasyIDTkinterApp:
         self.tree_report.heading("threshold", text="Norme")
         self.tree_report.heading("comment", text="Diagnostic")
 
-        self.tree_report.column("status", width=70, anchor=tk.CENTER)
-        self.tree_report.column("name", width=220, anchor=tk.W)
-        self.tree_report.column("value", width=110, anchor=tk.CENTER)
-        self.tree_report.column("threshold", width=100, anchor=tk.CENTER)
-        self.tree_report.column("comment", width=460, anchor=tk.W)
+        self.tree_report.column("status", width=80, anchor=CENTER)
+        self.tree_report.column("name", width=230, anchor=W)
+        self.tree_report.column("value", width=120, anchor=CENTER)
+        self.tree_report.column("threshold", width=100, anchor=CENTER)
+        self.tree_report.column("comment", width=480, anchor=W)
 
-        self.tree_report.pack(fill=tk.X, expand=True, pady=4)
+        self.tree_report.pack(fill=X, expand=True)
 
-        # 5. Barre de statut
-        self.statusbar = ttk.Label(self.root, text="Prêt.", relief=tk.SUNKEN, anchor=tk.W, padding=4)
-        self.statusbar.pack(fill=tk.X, side=tk.BOTTOM)
+        # 5. Barre de statut inférieure
+        self.statusbar = tb.Label(
+            self.root,
+            text="Prêt. Ouvrez une photo ou utilisez la webcam pour commencer.",
+            font=("Helvetica", 9),
+            padding=(10, 4),
+            bootstyle="inverse-secondary",
+        )
+        self.statusbar.pack(fill=X, side=BOTTOM)
 
-    # --- Actions ---
+    # --- Événements & Traitement ---
+
+    def on_theme_changed(self, event=None):
+        new_theme = self.var_theme.get()
+        tb.Style().theme_use(new_theme)
 
     def on_open_file(self):
-        file_path = filedialog.askopenfilename(
+        file_path = ask_open_image_file(
             parent=self.root,
             title="Sélectionner une photo de portrait",
-            filetypes=[
-                ("Images", "*.jpg *.jpeg *.png *.webp *.bmp"),
-                ("Tous les fichiers", "*.*"),
-            ],
         )
         if file_path:
             img = cv2.imread(file_path)
@@ -329,12 +529,11 @@ class EasyIDTkinterApp:
 
     def load_image_array(self, image_bgr: np.ndarray):
         self.current_input_bgr = image_bgr
-        # Affichage aperçu source
-        img_tk = bgr_to_imagetk(image_bgr, 320, 360)
+        img_tk = bgr_to_imagetk(image_bgr, 340, 360)
         self.lbl_src_img.configure(image=img_tk, text="")
         self.lbl_src_img.image = img_tk
         h, w = image_bgr.shape[:2]
-        self.lbl_src_info.configure(text=f"Résolution d'origine : {w} × {h} px")
+        self.lbl_src_info.configure(text=f"Résolution originale : {w} × {h} px")
 
         self.reprocess_current()
 
@@ -342,7 +541,7 @@ class EasyIDTkinterApp:
         if self.current_input_bgr is None:
             return
 
-        self.statusbar.configure(text="Traitement en cours (détection faciale, alignement, recadrage)...")
+        self.statusbar.configure(text="⏳ Traitement par Deep Learning (détection, alignement, crop)...")
         self.root.update_idletasks()
 
         dpi = self.var_dpi.get()
@@ -357,29 +556,29 @@ class EasyIDTkinterApp:
         self.current_result = res
 
         if not res.success:
-            self.statusbar.configure(text=f"Erreur : {res.error_message}")
+            self.statusbar.configure(text=f"❌ Erreur : {res.error_message}")
             messagebox.showwarning("Non conforme", f"Analyse impossible : {res.error_message}")
-            self.btn_save_photo.configure(state=tk.DISABLED)
-            self.btn_save_sheet.configure(state=tk.DISABLED)
+            self.btn_save_photo.configure(state=DISABLED)
+            self.btn_save_sheet.configure(state=DISABLED)
             return
 
-        self.btn_save_photo.configure(state=tk.NORMAL)
-        self.btn_save_sheet.configure(state=tk.NORMAL)
+        self.btn_save_photo.configure(state=NORMAL)
+        self.btn_save_sheet.configure(state=NORMAL)
 
-        # Mise à jour des affichages
+        # Mise à jour affichage photo ID
         self.update_photo_display()
 
-        # Affichage planche
+        # Mise à jour affichage planche
         if res.printable_sheet is not None:
-            sheet_tk = bgr_to_imagetk(res.printable_sheet, 320, 220)
+            sheet_tk = bgr_to_imagetk(res.printable_sheet, 340, 240)
             self.lbl_sheet_img.configure(image=sheet_tk, text="")
             self.lbl_sheet_img.image = sheet_tk
             sh_h, sh_w = res.printable_sheet.shape[:2]
             self.lbl_sheet_info.configure(text=f"Planche 10×15 cm : {sh_w} × {sh_h} px ({dpi} DPI)")
 
-        # Mise à jour rapport
+        # Mise à jour tableau de conformité
         self._populate_report(res)
-        self.statusbar.configure(text="Traitement terminé avec succès.")
+        self.statusbar.configure(text="✅ Traitement terminé avec succès. Photo prête à sauvegarder.")
 
     def update_photo_display(self):
         if not self.current_result or not self.current_result.success or self.current_result.id_photo is None:
@@ -397,12 +596,11 @@ class EasyIDTkinterApp:
 
         h, w = self.current_result.id_photo.shape[:2]
         self.lbl_id_info.configure(
-            text=f"Format : 35×45 mm ({w}×{h} px)\n"
-            f"Visage : {self.current_result.face_height_mm:.1f} mm ({self.current_result.face_ratio_percent:.1f}%)"
+            text=f"Format : 35×45 mm ({w}×{h} px à {dpi} DPI)\n"
+            f"Taille visage : {self.current_result.face_height_mm:.1f} mm ({self.current_result.face_ratio_percent:.1f}% de la hauteur)"
         )
 
     def _populate_report(self, res: PipelineResult):
-        # Nettoyer l'ancien rapport
         for item in self.tree_report.get_children():
             self.tree_report.delete(item)
 
@@ -411,34 +609,33 @@ class EasyIDTkinterApp:
             return
 
         if report.passed:
-            self.lbl_overall_status.configure(
-                text=f"✅ CONFORME — Score de conformité : {report.score:.0f}%",
-                foreground="#008800",
+            self.banner_score.configure(
+                text=f"✅ CONFORME AUX NORMES OFFICIELLES (Score : {report.score:.0f}%)",
+                bootstyle="success",
             )
         else:
-            self.lbl_overall_status.configure(
-                text=f"⚠️ ATTENTION : Non-conformités détectées — Score : {report.score:.0f}%",
-                foreground="#CC6600",
+            self.banner_score.configure(
+                text=f"⚠️ ATTENTION : CRITÈRES NON CONFORMES DÉTECTÉS (Score : {report.score:.0f}%)",
+                bootstyle="warning",
             )
 
         for key, chk in report.checks.items():
-            status_icon = "✅ Conforme" if chk.passed else "❌ Rejet"
+            status_text = "✅ Conforme" if chk.passed else "❌ Non conforme"
             self.tree_report.insert(
                 "",
                 tk.END,
-                values=(status_icon, chk.name, str(chk.value), chk.threshold, chk.message),
+                values=(status_text, chk.name, str(chk.value), chk.threshold, chk.message),
             )
 
     def on_save_photo(self):
         if not self.current_result or self.current_result.id_photo is None:
             return
 
-        dest = filedialog.asksaveasfilename(
+        dest = ask_save_image_file(
             parent=self.root,
             title="Enregistrer la photo d'identité (35×45 mm)",
-            defaultextension=".jpg",
-            initialfile="photo_identite_35x45.jpg",
-            filetypes=[("Image JPEG", "*.jpg"), ("Image PNG", "*.png")],
+            initial_file="photo_identite_35x45.jpg",
+            file_type="jpg",
         )
         if dest:
             self.current_result.save(output_photo_path=dest, dpi=self.var_dpi.get())
@@ -448,12 +645,11 @@ class EasyIDTkinterApp:
         if not self.current_result or self.current_result.printable_sheet is None:
             return
 
-        dest = filedialog.asksaveasfilename(
+        dest = ask_save_image_file(
             parent=self.root,
             title="Enregistrer la planche d'impression (10×15 cm)",
-            defaultextension=".jpg",
-            initialfile="planche_impression_10x15.jpg",
-            filetypes=[("Image JPEG", "*.jpg"), ("Image PNG", "*.png")],
+            initial_file="planche_impression_10x15.jpg",
+            file_type="jpg",
         )
         if dest:
             self.current_result.save(
@@ -461,12 +657,12 @@ class EasyIDTkinterApp:
                 output_sheet_path=dest,
                 dpi=self.var_dpi.get(),
             )
-            messagebox.showinfo("Succès", f"Planche d'impression 10x15 cm enregistrée dans :\n{dest}")
+            messagebox.showinfo("Succès", f"Planche d'impression 10×15 cm enregistrée dans :\n{dest}")
 
 
 def start_app():
-    root = tk.Tk()
-    app = EasyIDTkinterApp(root)
+    root = tb.Window(themename="cosmo")
+    app = EasyIDModernApp(root)
     root.mainloop()
 
 
