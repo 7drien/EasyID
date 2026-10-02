@@ -25,6 +25,28 @@ Générateur et vérificateur automatique de photos d'identité aux **normes off
 
 ---
 
+## 🛠️ Stack Technique & Traitement d'Image
+
+EasyID fonctionne **100 % en local sur CPU**, sans aucun appel API externe ni transmission de données :
+
+- **MediaPipe Face Landmarker (3,7 Mo) :**
+  - Extraction de **478 repères 3D denses** sur le visage.
+  - Détection submétrique du centre des pupilles/iris (repères 468 & 473) pour calculer l'axe oculaire exact et redresser l'angle de roulis (*roll*).
+  - *Blendshapes* neuronaux pour vérifier les critères ICAO (yeux ouverts `eyeBlink`, bouche fermée `jawOpen`, absence de sourire `mouthSmile`) et calcul de pose 3D (*yaw*, *pitch*).
+- **Modèle Anthropométrique Crânio-Facial (ISO/IEC 19794-5 & Farkas) :**
+  - Estimation précise du **sommet anatomique du crâne** (*vertex*, hors chevelure) par projection géométrique basée sur le ratio oculaire ($\text{dist}(\text{menton}, \text{vertex}) \approx 1.92 \times \text{dist}(\text{menton}, \text{yeux})$) et la voûte pariétale frontale.
+- **MediaPipe Selfie Segmenter (250 Ko) :**
+  - Réseau neuronal de segmentation sémantique pour isoler la silhouette complète (corps, visage et cheveux).
+  - Masque alpha adouci par flou gaussien pour détourer proprement le sujet et remplacer le fond par le gris clair neutre officiel ANTS (`#E5E7EB`).
+  - Détection des contours supérieurs de la chevelure pour garantir une marge de sécurité sans rognage de la tête.
+- **OpenCV & NumPy :**
+  - Calcul de la matrice de transformation affine (translation, rotation, homothétie) et recadrage par interpolation haute fidélité **Lanczos-4** (`cv2.INTER_LANCZOS4`) pour un piqué maximal.
+  - Contrôle de netteté par variance du filtre Laplacien (`cv2.Laplacian`).
+- **Pillow (PIL) :**
+  - Encodage des métadonnées physiques EXIF (**300 ou 600 DPI**) dans les fichiers JPEG/PNG générés, assurant un tirage d'impression exactement à l'échelle 35 × 45 mm sur papier photo.
+
+---
+
 ## 🚀 Installation
 
 ```bash
