@@ -107,7 +107,7 @@ EasyID/
 │   │   ├── segmenter.py       # Détourage & fond neutre (SelfieSegmenter)
 │   │   └── validator.py       # Contrôle de conformité réglementaire ICAO/ANTS
 │   └── ui/
-│       └── app.py             # Interface graphique Streamlit (webcam + upload)
+│       └── app.py             # Interface graphique native Desktop Tkinter (webcam + upload)
 └── tests/
     ├── test_geometry.py       # Tests géométrie et redressement
     └── test_pipeline.py       # Tests d'intégration bout en bout
