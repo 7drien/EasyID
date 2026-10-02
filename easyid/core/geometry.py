@@ -3,7 +3,7 @@ Module de calculs géométriques, estimation anatomique du crâne et transformat
 """
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 import cv2
 import numpy as np
 
@@ -23,11 +23,11 @@ class AffineTransformResult:
 
 def estimate_skull_crown(keypoints: FaceKeypoints) -> np.ndarray:
     """
-    Estime la position 2D du sommet anatomique du crâne (vertex), hors chevelure.
+    Estime la position 2D du sommet anatomique du crâne osseux (vertex), hors chevelure.
     
     Conforme aux proportions anthropométriques crânio-faciales (norme ISO/IEC 19794-5 / Farkas) :
     La ligne des yeux se situe à environ 53-55% de la hauteur totale menton-sommet du crâne.
-    Le repère 10 de MediaPipe correspond au haut du front (trichion / limite basse de la calotte).
+    Le repère 10 de MediaPipe correspond au haut du front (trichion / limite de la calotte).
     """
     chin = keypoints.chin[:2]
     eyes_center = (keypoints.left_iris[:2] + keypoints.right_iris[:2]) / 2.0
@@ -38,24 +38,21 @@ def estimate_skull_crown(keypoints: FaceKeypoints) -> np.ndarray:
     dist_chin_to_eyes = np.linalg.norm(vec_chin_to_eyes)
 
     if dist_chin_to_eyes < 1.0:
-        # Fallback de secours
         return forehead
 
     unit_up = vec_chin_to_eyes / dist_chin_to_eyes
 
     # Estimation basée sur le ratio oculaire anthropométrique
-    # Head height = dist_chin_to_eyes / 0.54
-    # Distance eyes to crown = dist_chin_to_eyes * (1 - 0.54) / 0.54 ~= 0.852 * dist_chin_to_eyes
-    crown_from_eyes = chin + unit_up * (dist_chin_to_eyes * 1.85)
+    # Head height = dist_chin_to_eyes / 0.54 ~= dist_chin_to_eyes * 1.85
+    crown_from_eyes = chin + unit_up * (dist_chin_to_eyes * 1.80)
 
-    # Estimation basée sur le haut du front (repère 10) + épaisseur de la voûte crânienne osseuse
+    # Estimation basée sur le haut du front (repère 10) + voûte crânienne osseuse
     dist_chin_to_forehead = np.dot(forehead - chin, unit_up)
-    # La calotte crânienne au-dessus du front représente environ 15-20% de la distance menton-front
-    cranial_vault_thickness = 0.18 * dist_chin_to_forehead
+    cranial_vault_thickness = 0.16 * dist_chin_to_forehead
     crown_from_forehead = forehead + unit_up * cranial_vault_thickness
 
-    # Moyenne pondérée robuste entre proportion oculaire et repère frontal
-    estimated_crown = 0.6 * crown_from_eyes + 0.4 * crown_from_forehead
+    # Moyenne pondérée robuste
+    estimated_crown = 0.5 * crown_from_eyes + 0.5 * crown_from_forehead
     return estimated_crown
 
 
@@ -64,15 +61,19 @@ def compute_id_affine_transform(
     target_width: int,
     target_height: int,
     target_face_height: int,
-    target_top_margin: int,
+    target_top_margin: Optional[int] = None,
+    mask: Optional[np.ndarray] = None,
 ) -> AffineTransformResult:
     """
     Calcule la matrice de transformation affine (similitude : échelle + rotation + translation)
     qui garantit :
       1. Redressement de la tête (horizontalité parfaite de la ligne des yeux).
-      2. Mise à l'échelle pour que la hauteur menton-sommet du crâne = target_face_height.
-      3. Centrage horizontal parfait de l'axe médian du visage (X = target_width / 2).
-      4. Positionnement du sommet du crâne à target_top_margin du haut de l'image.
+      2. Mise à l'échelle pour que la hauteur menton-sommet du crâne = target_face_height (conforme 32-36 mm).
+      3. Centrage horizontal strict de l'axe médian du visage (X = target_width / 2).
+      4. Positionnement vertical intelligent :
+         - Si un masque est fourni, le sommet réel visible de la tête (cheveux compris) est
+           positionné sous le bord supérieur avec une marge de sécurité pour que la tête ne dépasse JAMAIS.
+         - Si aucun masque n'est fourni, alignement direct avec target_top_margin.
     """
     # 1. Sommet du crâne estimé et menton
     crown_src = estimate_skull_crown(keypoints)
@@ -99,27 +100,77 @@ def compute_id_affine_transform(
     eyes_center_src = (keypoints.left_iris[:2] + keypoints.right_iris[:2]) / 2.0
 
     # 6. Matrice de rotation OpenCV autour du centre des yeux
-    # Pour annuler l'inclinaison angle_deg dans le repère image (Y vers le bas),
-    # cv2.getRotationMatrix2D avec +angle_deg ramène la ligne interoculaire à l'horizontale
     M = cv2.getRotationMatrix2D(
         (float(eyes_center_src[0]), float(eyes_center_src[1])),
         angle_deg,
         scale,
     )
 
-    # 7. Coordonnées transformées actuelles du sommet du crâne et du centre
+    # 7. Coordonnées transformées actuelles
     crown_homog = np.array([crown_src[0], crown_src[1], 1.0], dtype=np.float32)
     eyes_homog = np.array([eyes_center_src[0], eyes_center_src[1], 1.0], dtype=np.float32)
 
     crown_transformed = M @ crown_homog
     eyes_transformed = M @ eyes_homog
 
-    # 8. Ajustement de translation pour atteindre les coordonnées cibles exactes
+    # 8. Ajustement horizontal : centrage parfait
     target_center_x = target_width / 2.0
     tx = target_center_x - eyes_transformed[0]
-    ty = target_top_margin - crown_transformed[1]
-
     M[0, 2] += tx
+
+    # 9. Ajustement vertical : prise en compte des cheveux pour éviter tout débordement
+    if mask is not None:
+        # Rotation du masque pour mesurer la hauteur réelle de la chevelure au-dessus du crâne
+        h_m, w_m = mask.shape[:2]
+        M_rot_only = cv2.getRotationMatrix2D(
+            (float(eyes_center_src[0]), float(eyes_center_src[1])),
+            angle_deg,
+            1.0,
+        )
+        rot_mask = cv2.warpAffine(mask, M_rot_only, (w_m, h_m), flags=cv2.INTER_LINEAR)
+        rot_eyes = M_rot_only @ eyes_homog
+        rot_crown = M_rot_only @ crown_homog
+
+        eye_dist = abs(keypoints.left_iris[0] - keypoints.right_iris[0])
+        x_min = max(0, int(rot_eyes[0] - eye_dist * 0.85))
+        x_max = min(w_m, int(rot_eyes[0] + eye_dist * 0.85))
+
+        strip = rot_mask[:, x_min:x_max]
+        if strip.ndim == 3:
+            strip = strip[:, :, 0]
+        rows = np.where(strip > 0.35)[0]
+
+        if len(rows) > 0 and rows.min() < rot_crown[1]:
+            rot_head_top_y = float(rows.min())
+        else:
+            # Estimation de chevelure normale (~8% de la hauteur du visage)
+            rot_head_top_y = rot_crown[1] - face_height_src * 0.08
+
+        # Épaisseur des cheveux au-dessus du crâne dans l'image finale
+        hair_thickness_dst = max(0.0, (rot_crown[1] - rot_head_top_y) * scale)
+
+        # Marges cibles en pixels
+        ideal_top_margin_px = round(target_height * 0.075)  # ~3.4 mm au-dessus des cheveux
+        min_top_margin_px = round(target_height * 0.045)  # ~2.0 mm marge minimale
+        min_bottom_margin_px = round(target_height * 0.080)  # ~3.6 mm sous le menton
+
+        desired_crown_y = ideal_top_margin_px + hair_thickness_dst
+        desired_chin_y = desired_crown_y + target_face_height
+        max_chin_y = target_height - min_bottom_margin_px
+
+        if desired_chin_y > max_chin_y:
+            excess = desired_chin_y - max_chin_y
+            shift = min(excess, ideal_top_margin_px - min_top_margin_px)
+            desired_crown_y -= shift
+            remaining = excess - shift
+            if remaining > 0:
+                desired_crown_y -= min(remaining, min_top_margin_px - 8)
+
+        ty = desired_crown_y - crown_transformed[1]
+    else:
+        effective_top = target_top_margin if target_top_margin is not None else round(target_height * 0.08)
+        ty = effective_top - crown_transformed[1]
+
     M[1, 2] += ty
 
     return AffineTransformResult(

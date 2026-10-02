@@ -65,6 +65,7 @@ class FaceCropper:
         image_bgr: np.ndarray,
         detection: FaceDetection,
         dpi: int = 300,
+        mask: Optional[np.ndarray] = None,
     ) -> CropResult:
         """
         Calcule et applique le recadrage optimal conforme à partir d'une détection faciale.
@@ -75,14 +76,13 @@ class FaceCropper:
         target_w = self.config.target_width_px(dpi)
         target_h = self.config.target_height_px(dpi)
         target_face_h = self.config.target_face_height_px(dpi)
-        target_top_margin = self.config.target_top_margin_px(dpi)
 
         affine_res = compute_id_affine_transform(
             keypoints=detection.keypoints,
             target_width=target_w,
             target_height=target_h,
             target_face_height=target_face_h,
-            target_top_margin=target_top_margin,
+            mask=mask,
         )
 
         cropped_img = apply_affine_crop(

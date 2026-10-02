@@ -102,9 +102,12 @@ class EasyIDPipeline:
                 error_message="Aucun visage détecté sur la photo fournie.",
             )
 
-        # 3. Recadrage et alignement géométrique
+        # 3. Extraction du masque de silhouette (pour délimiter la chevelure et éviter que la tête ne dépasse)
+        source_mask = self.segmenter.extract_mask(img_bgr)
+
+        # 4. Recadrage et alignement géométrique adaptatif
         try:
-            crop_res = self.cropper.crop(img_bgr, detection, dpi=dpi)
+            crop_res = self.cropper.crop(img_bgr, detection, dpi=dpi, mask=source_mask)
         except Exception as e:
             return PipelineResult(
                 success=False,
@@ -114,13 +117,11 @@ class EasyIDPipeline:
 
         final_photo = crop_res.cropped_image
 
-        # 4. Remplacement d'arrière-plan
+        # 5. Remplacement d'arrière-plan
         if replace_background:
             if bg_color_bgr is None:
                 bg_color_bgr = self.config.DEFAULT_BG_COLOR_BGR
 
-            # Extraction du masque sur l'image source puis application de la même transformation affine
-            source_mask = self.segmenter.extract_mask(img_bgr)
             target_w = crop_res.target_width_px
             target_h = crop_res.target_height_px
 

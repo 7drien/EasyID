@@ -28,10 +28,12 @@ class IDPhotoConfig:
     # Taille du visage réglementaire (menton au sommet du crâne, hors cheveux)
     FACE_HEIGHT_MIN_MM: float = 32.0  # 71.1%
     FACE_HEIGHT_MAX_MM: float = 36.0  # 80.0%
-    FACE_HEIGHT_TARGET_MM: float = 34.0  # 75.5% (valeur médiane idéale)
+    FACE_HEIGHT_TARGET_MM: float = 33.0  # 73.3% (médiane optimale laissant place à la chevelure)
 
-    # Marges recommandées
-    TOP_MARGIN_TARGET_MM: float = 4.0  # Marge crâne / bord supérieur (3 à 5 mm)
+    # Marges recommandées pour que la tête et les cheveux soient intégralement dans le cadre
+    HEAD_TOP_MARGIN_TARGET_MM: float = 3.5  # Marge idéale sommet de tête (cheveux compris) / bord supérieur
+    HEAD_TOP_MARGIN_MIN_MM: float = 2.0  # Marge minimale absolue au-dessus des cheveux
+    CHIN_BOTTOM_MARGIN_MIN_MM: float = 4.0  # Marge minimale sous le menton
 
     # Résolution par défaut
     DEFAULT_DPI: int = 300

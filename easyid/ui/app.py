@@ -113,21 +113,26 @@ def draw_official_overlay(image_bgr: np.ndarray, config: IDPhotoConfig, dpi: int
     overlay = image_bgr.copy()
     h, w = image_bgr.shape[:2]
 
-    # Ligne médiane verticale (axe sagittal)
+    # 1. Ligne médiane verticale (axe sagittal de symétrie)
     cv2.line(overlay, (w // 2, 0), (w // 2, h), (0, 230, 255), 1)
 
-    # Ligne sommet du crâne cible
-    top_margin_px = config.target_top_margin_px(dpi)
-    cv2.line(overlay, (0, top_margin_px), (w, top_margin_px), (0, 255, 100), 1)
-    cv2.putText(overlay, "Sommet crane (3.5-4.5mm)", (8, top_margin_px - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 220, 100), 1)
+    # 2. Zone supérieure recommandée pour la tête / cheveux (2 à 5 mm)
+    top_min_px = round((2.0 / 25.4) * dpi)
+    top_ideal_px = round((3.5 / 25.4) * dpi)
+    cv2.line(overlay, (0, top_min_px), (w, top_min_px), (0, 255, 100), 1)
+    cv2.putText(overlay, "Limite haute cheveux (>=2mm)", (8, top_min_px - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 220, 100), 1)
 
-    # Zone menton réglementaire (entre 32 et 36 mm du sommet)
-    chin_min_px = top_margin_px + config.target_face_height_px(dpi) - round((2.0 / 25.4) * dpi)
-    chin_max_px = top_margin_px + config.target_face_height_px(dpi) + round((2.0 / 25.4) * dpi)
+    # 3. Ligne des yeux recommandée (environ 24 à 30 mm du bas)
+    eyes_ref_px = h - round((26.0 / 25.4) * dpi)
+    cv2.line(overlay, (w // 4, eyes_ref_px), (3 * w // 4, eyes_ref_px), (255, 200, 0), 1)
+    cv2.putText(overlay, "Axe des yeux", (w // 4 + 4, eyes_ref_px - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.30, (255, 200, 0), 1)
 
+    # 4. Zone basse menton réglementaire (environ 5 à 9 mm du bas)
+    chin_min_px = h - round((5.0 / 25.4) * dpi)
+    chin_max_px = h - round((9.0 / 25.4) * dpi)
     cv2.line(overlay, (0, chin_min_px), (w, chin_min_px), (0, 140, 255), 1)
     cv2.line(overlay, (0, chin_max_px), (w, chin_max_px), (0, 140, 255), 1)
-    cv2.putText(overlay, "Zone menton (32-36mm)", (8, chin_max_px + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 140, 255), 1)
+    cv2.putText(overlay, "Zone menton", (8, chin_min_px + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 140, 255), 1)
 
     return cv2.addWeighted(overlay, 0.85, image_bgr, 0.15, 0)
 
